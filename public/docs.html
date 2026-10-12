@@ -19,7 +19,7 @@ jobs:
         with: { node-version: 20 }
       - name: Install the Schema Labs engine
         run: |
-          git clone --depth 1 https://github.com/nicnqaccoin/schemalabs.git "$RUNNER_TEMP/schemalabs"
+          git clone --depth 1 https://github.com/schemalabs-dev/schemalabs.git "$RUNNER_TEMP/schemalabs"
           npm ci --prefix "$RUNNER_TEMP/schemalabs"
       - name: Fail on breaking changes
         env:
