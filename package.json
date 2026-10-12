@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "bin": { "schemalabs": "./bin/schemalabs.js" },
   "description": "Browser-local JSON Schema validation and conservative schema-change review",
   "scripts": {
     "test": "node --test tests/engine.test.js",

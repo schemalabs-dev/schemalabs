@@ -158,11 +158,11 @@ try {
   check('Pricing FAQ answers AI privacy questions without overclaiming');
   await page.screenshot({ path: new URL('desktop-pricing.png', output).pathname.replace(/^\/(\w:)/, '$1'), fullPage: true });
   await page.goto(base + '/changelog.html');
-  assert.deepEqual(await page.locator('.release h2').allInnerTexts(), ['v1.2.0', 'v1.1.0', 'v1.0.0']);
-  assert.deepEqual(await page.locator('.release time').evaluateAll(t => t.map(x => x.getAttribute('datetime'))), ['2026-10', '2026-08', '2026-06']);
-  assert.match(await page.locator('[id="v1.2.0"]').innerText(), /Claude AI Migration Explainer[\s\S]*Web Worker[\s\S]*Geist Variable/);
-  assert.match(await page.locator('[id="v1.1.0"]').innerText(), /2020-12[\s\S]*diff highlighter/);
-  check('Changelog lists v1.2.0, v1.1.0 and v1.0.0 newest first');
+  assert.deepEqual(await page.locator('.release h2').allInnerTexts(), ['v1.0.0']);
+  assert.deepEqual(await page.locator('.release time').evaluateAll(t => t.map(x => x.getAttribute('datetime'))), ['2026-10']);
+  assert.match(await page.locator('[id="v1.0.0"]').innerText(), /Ajv[\s\S]*Draft-07 and 2020-12[\s\S]*numbered pins[\s\S]*Claude Migration Explainer/);
+  assert.doesNotMatch(await page.locator('main').innerText(), /June 2026|August 2026|v1\.[12]\.0/);
+  check('Changelog lists a single v1.0.0 (October 2026) matching the repository history');
   await page.screenshot({ path: new URL('desktop-changelog.png', output).pathname.replace(/^\/(\w:)/, '$1'), fullPage: true });
   await page.goto(base + '/docs.html#ci');
   assert.equal(await page.locator('.article-nav a[href="#ci"]').count(), 1);

@@ -20,7 +20,7 @@ Live Developer Preview: [https://schemalabs.co.uk](https://schemalabs.co.uk)
   - `breaking`: Constraint tightening, type removal, property addition to closed objects, required field additions.
   - `review`: Composition shifts (`anyOf`, `oneOf`, `allOf`), pattern updates, description modifications.
   - `compatible`: Relaxed boundaries, optional field additions, safe documentation updates.
-- **Claude AI Migration Explainer (Beta, v1.2):** Optional. With your own Anthropic key (or the offline mock), sends only the breaking findings straight from your browser to `api.anthropic.com` and returns a migration brief, an adapter schema sketch and a regression test.
+- **Claude AI Migration Explainer (Beta):** Optional. With your own Anthropic key (or the offline mock), sends only the breaking findings straight from your browser to `api.anthropic.com` and returns a migration brief, an adapter schema sketch and a regression test.
 - **Zero Tracking:** No analytics cookies, no telemetry, strict Content Security Policy (`connect-src` allows only `https://api.anthropic.com`, used solely by the optional explainer).
 
 ---

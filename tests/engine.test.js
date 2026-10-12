@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { chromium } from '@playwright/test';
 import { validate, compare, baselineSchema, candidateSchema, samplePayload } from '../src/engine.js';
 
@@ -360,4 +363,30 @@ test('browser executes bundled validation offline with no network requests', asy
     assert.deepEqual(errors, []);
     assert.deepEqual(requests.filter(url => /^https?:/.test(url)), []);
   } finally { await browser.close(); }
+});
+
+test('CLI exits 1 on breaking changes, 0 when compatible, 2 on bad input', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'schemalabs-cli-'));
+  try {
+    const file = async (name, value) => { const path = join(dir, name); await writeFile(path, typeof value === 'string' ? value : JSON.stringify(value)); return path; };
+    const base = await file('base.json', baselineSchema), next = await file('next.json', candidateSchema), bad = await file('bad.json', '{');
+    const cli = (...args) => spawnSync(process.execPath, [new URL('../bin/schemalabs.js', import.meta.url).pathname.replace(/^\/(\w:)/, '$1'), ...args], { encoding: 'utf8' });
+
+    const breaking = cli('--baseline', base, '--candidate', next);
+    assert.equal(breaking.status, 1);
+    assert.match(breaking.stdout, /BREAKING\s+\/required\/currency/);
+    assert.match(breaking.stdout, /4 breaking, 0 review, 0 compatible/);
+
+    const json = cli('--baseline', base, '--candidate', next, '--json');
+    assert.equal(json.status, 1);
+    assert.deepEqual(JSON.parse(json.stdout), compare(baselineSchema, candidateSchema));
+
+    const same = cli('--baseline', base, '--candidate', base);
+    assert.equal(same.status, 0);
+    assert.match(same.stdout, /0 breaking/);
+
+    assert.equal(cli('--baseline', base).status, 2);
+    assert.equal(cli('--baseline', base, '--candidate', bad).status, 2);
+    assert.match(cli('--baseline', base, '--candidate', join(dir, 'missing.json')).stderr, /cannot read candidate schema/);
+  } finally { await rm(dir, { recursive: true, force: true }); }
 });
