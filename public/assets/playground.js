@@ -1,9 +1,9 @@
-import { baselineSchema, candidateSchema, samplePayload } from './samples.js';
+import { samples } from './samples.js';
 import { mountExplainer } from './explainer.js';
 const $ = id => document.getElementById(id);
 const left = $('left-editor'), right = $('right-editor'), results = $('results'), briefHost = $('brief-host');
 const run = $('run-check'), download = $('download-report');
-let mode = 'validate', report = null, busy = false, worker = null, requestId = 0, timer = null, pending = null;
+let mode = 'validate', sample = 'order', report = null, busy = false, worker = null, requestId = 0, timer = null, pending = null;
 const maximum = 512 * 1024;
 const enc = new TextEncoder();
 const pretty = value => JSON.stringify(value, null, 2);
@@ -42,7 +42,7 @@ function fail(message, title = 'The check could not run') {
 }
 function setBusy(value) {
   busy = value; results.setAttribute('aria-busy', String(value));
-  for (const id of ['run-check','load-example','clear-inputs','upload-left','upload-right','tab-validate','tab-compare']) $(id).disabled = value;
+  for (const id of ['run-check','load-example','sample-select','clear-inputs','upload-left','upload-right','tab-validate','tab-compare']) $(id).disabled = value;
   left.readOnly = value; right.readOnly = value;
   if (!value) { results.classList.remove('loading'); buttonLabel(); }
 }
@@ -103,7 +103,8 @@ function render(value,duration) {
   report = {tool:'Schema Labs',version:'1.0',mode,generatedAt:new Date().toISOString(),durationMs:Math.round(duration),result:value}; download.hidden = false;
 }
 function loadExample() {
-  left.value = pretty(baselineSchema); right.value = pretty(mode === 'compare' ? candidateSchema : samplePayload); refreshAll(); empty();
+  const { baseline, candidate, payload } = samples[sample];
+  left.value = pretty(baseline); right.value = pretty(mode === 'compare' ? candidate : payload); refreshAll(); empty();
 }
 function selectMode(next,initial = false) {
   if (busy) return;
@@ -133,6 +134,7 @@ run.addEventListener('click',async () => {
     const start = performance.now(), value = await compute(a,b); render(value,performance.now()-start);
   } catch(error) { fail(error.message); } finally { setBusy(false); }
 });
+$('sample-select').addEventListener('change',event => { sample = event.target.value; loadExample(); run.click(); });
 $('load-example').addEventListener('click',() => { loadExample(); status('Example loaded. Inputs are editable.'); });
 $('clear-inputs').addEventListener('click',() => { left.value = ''; right.value = ''; refreshAll(); empty(); left.focus(); });
 for (const name of ['validate','compare']) $(`tab-${name}`).addEventListener('click',() => selectMode(name));

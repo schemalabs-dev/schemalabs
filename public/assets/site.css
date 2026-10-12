@@ -501,3 +501,18 @@ kbd{display:inline-grid;place-items:center;min-width:22px;height:22px;padding:0 
 }
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .explain-bar .button{white-space:normal;height:auto;min-height:34px;padding-block:8px;line-height:1.3;text-align:center}
+.sample-pick select{height:34px;max-width:100%;padding:0 10px;border:1px solid var(--line-2);border-radius:var(--radius-sm);background:var(--surface);color:var(--ink);font-size:13px;font-weight:540;cursor:pointer}
+.sample-pick select:disabled{cursor:not-allowed;opacity:.6}
+.tool-bar-actions{align-items:center;flex-wrap:wrap}
+@media(max-width:720px){.sample-pick{flex:1 1 100%}.sample-pick select{width:100%}}
+.pricing-note{margin-bottom:clamp(40px,6vw,64px)}
+.faq{max-width:46rem;padding-bottom:clamp(56px,8vw,96px)}
+.faq h2{margin-bottom:16px;font-size:1.5rem;letter-spacing:-.02em}
+.faq-list{border-top:1px solid var(--line)}
+.faq-item{border-bottom:1px solid var(--line)}
+.faq-item summary{position:relative;padding:16px 36px 16px 0;list-style:none;cursor:pointer;font-weight:560;color:var(--ink)}
+.faq-item summary::-webkit-details-marker{display:none}
+.faq-item summary:after{content:"+";position:absolute;right:4px;top:50%;transform:translateY(-50%);font:400 22px/1 var(--mono);color:var(--muted)}
+.faq-item[open] summary:after{content:"\2212"}
+.faq-body{padding:0 0 18px;font-size:15.5px;line-height:1.7;color:var(--ink-2)}
+.faq-body p+p{margin-top:10px}
