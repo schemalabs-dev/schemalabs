@@ -1,6 +1,7 @@
 import { baselineSchema, candidateSchema, samplePayload } from './samples.js';
+import { mountExplainer } from './explainer.js';
 const $ = id => document.getElementById(id);
-const left = $('left-editor'), right = $('right-editor'), results = $('results');
+const left = $('left-editor'), right = $('right-editor'), results = $('results'), briefHost = $('brief-host');
 const run = $('run-check'), download = $('download-report');
 let mode = 'validate', report = null, busy = false, worker = null, requestId = 0, timer = null, pending = null;
 const maximum = 512 * 1024;
@@ -28,7 +29,7 @@ function refresh(editor) {
 }
 function refreshAll() { refresh(left); refresh(right); }
 function empty() {
-  results.replaceChildren(); results.classList.remove('loading');
+  results.replaceChildren(); briefHost.replaceChildren(); results.classList.remove('loading');
   const box = element('div', 'empty-result'); const copy = element('div'); const icon = element('span', 'empty-icon', '{ }');
   icon.setAttribute('aria-hidden', 'true');
   copy.append(element('strong', '', 'Ready when you are.'), element('p', '', 'Load the example or paste your documents, then run a check.'));
@@ -36,7 +37,7 @@ function empty() {
 }
 function fail(message, title = 'The check could not run') {
   const box = element('div', 'results-error'); box.append(element('strong', '', title), element('span', '', message));
-  results.replaceChildren(box);
+  results.replaceChildren(box); briefHost.replaceChildren();
   download.hidden = true; report = null;
 }
 function setBusy(value) {
@@ -98,6 +99,7 @@ function render(value,duration) {
   if (findings.length) results.append(listing);
   if (findings.length > 200) results.append(element('p','results-note','Showing the first 200 findings. The downloaded report contains the full result.'));
   if (!total) results.append(element('p','results-note',mode === 'compare' ? 'No reviewed rules changed. This is not a proof of complete API compatibility.' : 'The input passed validation against the schema you provided.'));
+  briefHost.replaceChildren(); if (mode === 'compare') mountExplainer(briefHost,value.changes);
   report = {tool:'Schema Labs',version:'1.0',mode,generatedAt:new Date().toISOString(),durationMs:Math.round(duration),result:value}; download.hidden = false;
 }
 function loadExample() {

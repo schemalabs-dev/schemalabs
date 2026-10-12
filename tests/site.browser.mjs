@@ -9,7 +9,22 @@ const browser = await chromium.launch({ channel: 'chrome', headless: true });
 const checks = [];
 const check = (name, detail = true) => { checks.push({ name, detail }); console.log('PASS', name, JSON.stringify(detail)); };
 const errors = [], failed = [];
-const paths = ['/', '/playground.html', '/docs.html', '/about.html', '/privacy.html', '/terms.html', '/404.html'];
+const paths = ['/', '/playground.html', '/docs.html', '/pricing.html', '/changelog.html', '/about.html', '/privacy.html', '/terms.html', '/404.html'];
+const githubUrl = 'https://github.com/schemalabs-dev/schemalabs';
+const navHrefs = ['/playground.html', '/docs.html', '/pricing.html', '/changelog.html', '/about.html', githubUrl];
+const assertSharedNav = async (page, path) => {
+  const nav = await page.locator('#site-nav > a').evaluateAll(links => links.map(a => ({ href: a.getAttribute('href'), current: a.getAttribute('aria-current'), label: a.getAttribute('aria-label') })));
+  assert.deepEqual(nav.map(a => a.href), navHrefs, path + ' header nav links');
+  assert.equal(nav.filter(a => a.current === 'page').length, ['/', '/404.html', '/privacy.html', '/terms.html'].includes(path) ? 0 : 1, path + ' marks one current page');
+  assert.equal(nav.at(-1).label, 'Schema Labs on GitHub');
+  const footerHrefs = await page.locator('.site-footer a').evaluateAll(links => links.map(a => a.getAttribute('href')));
+  for (const href of ['/pricing.html', '/changelog.html', githubUrl]) assert.ok(footerHrefs.includes(href), path + ' footer links ' + href);
+};
+const assertCspAllowsOnlyAnthropic = async () => {
+  const csp = (await readFile(new URL('../public/_headers', import.meta.url), 'utf8')).match(/Content-Security-Policy: (.*)/)[1];
+  assert.match(csp, /connect-src https:\/\/api\.anthropic\.com(;|$)/);
+  assert.doesNotMatch(csp, /connect-src[^;]*(\*|'self'|'none')/);
+};
 // Reject unrelated project identities, but allow this company's published registration details.
 const unrelatedIdentity = /diffhaven|paytool|pages\.dev/i;
 const registryUrl = 'https://find-and-update.company-information.service.gov.uk/company/15348827';
@@ -28,6 +43,8 @@ assert.equal(unrelatedIdentity.test('Schema Labs Ltd 15348827 20 Wenlock Road'),
 for (const foreign of ['DiffHaven', 'PayTool', 'schemalabs.pages.dev']) {
   assert.equal(unrelatedIdentity.test(foreign), true, 'Foreign identity matcher still rejects ' + foreign);
 }
+await assertCspAllowsOnlyAnthropic();
+check('CSP permits only api.anthropic.com for connections');
 check('Identity matcher allows company registration and rejects unrelated projects');
 try {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, acceptDownloads: true });
@@ -60,6 +77,8 @@ try {
     check('Desktop page ' + path, { status: response.status(), title: await page.title(), canonical: state.canonical });
     await assertCompanyFooter(page);
     check('Company footer ' + path);
+    await assertSharedNav(page, path);
+    check('Header nav, GitHub icon and footer links ' + path);
     assert.ok(state.assets.length > 0, path + ' publishes assets');
     for (const ref of state.assets) {
       const asset = new URL(ref, base);
@@ -73,11 +92,11 @@ try {
     const headers = response.headers();
     assert.equal(headers['x-content-type-options'], 'nosniff');
     assert.equal(headers['x-frame-options'], 'DENY');
-    for (const directive of ["style-src 'self'", "worker-src 'self'", "connect-src 'none'"]) {
+    for (const directive of ["style-src 'self'", "worker-src 'self'", 'connect-src https://api.anthropic.com']) {
       assert.ok(headers['content-security-policy']?.includes(directive), 'Production CSP includes ' + directive);
     }
     assert.equal(headers['referrer-policy'], 'strict-origin-when-cross-origin');
-    check('Production security headers and browser-local CSP are present');
+    check('Production security headers and CSP are present');
     for (const suffix of ['/', '/playground.html?mode=compare']) {
       const response = await context.request.get('https://www.schemalabs.co.uk' + suffix, { maxRedirects: 0 });
       assert.equal(response.status(), 301);
@@ -115,6 +134,26 @@ try {
     assert.doesNotMatch(await page.locator('main').innerText(), /maintainer|Thanh Hưng Nguyễn|independent developer project/i);
     check('Corporate operator is explicit in main content ' + path);
   }
+  await page.goto(base + '/pricing.html');
+  const firstLines = texts => texts.map(x => x.split('\n')[0].trim());
+  const tierNames = await page.locator('.tier h2').allInnerTexts();
+  assert.deepEqual(['Free Community', 'Pro / Team', 'Enterprise'].map((name, i) => tierNames[i]?.startsWith(name)), [true, true, true]);
+  assert.deepEqual(firstLines(await page.locator('.tier-price').allInnerTexts()), ['$0', '$29', 'Custom']);
+  assert.match(await page.locator('.tier').nth(0).innerText(), /512 KB[\s\S]*Draft-07 and 2020-12[\s\S]*never leave your tab/);
+  assert.match(await page.locator('.tier').nth(1).innerText(), /Claude AI Migration Explainer[\s\S]*release notes[\s\S]*GitHub Action[\s\S]*schema registry/);
+  assert.match(await page.locator('.tier').nth(2).innerText(), /SSO \/ SAML[\s\S]*on-premise or VPC[\s\S]*SLA[\s\S]*custom schema dialects/i);
+  assert.equal(await page.locator('table.compare thead th').count(), 4);
+  assert.ok(await page.locator('table.compare tbody tr:not(.group)').count() >= 10);
+  assert.equal(await page.locator('table.compare tbody th[scope=row]', { hasText: 'SSO / SAML' }).count(), 1);
+  check('Pricing page shows three tiers and the feature comparison grid');
+  await page.screenshot({ path: new URL('desktop-pricing.png', output).pathname.replace(/^\/(\w:)/, '$1'), fullPage: true });
+  await page.goto(base + '/changelog.html');
+  assert.deepEqual(await page.locator('.release h2').allInnerTexts(), ['v1.2.0', 'v1.1.0', 'v1.0.0']);
+  assert.deepEqual(await page.locator('.release time').evaluateAll(t => t.map(x => x.getAttribute('datetime'))), ['2026-10', '2026-08', '2026-06']);
+  assert.match(await page.locator('[id="v1.2.0"]').innerText(), /Claude AI Migration Explainer[\s\S]*Web Worker[\s\S]*Geist Variable/);
+  assert.match(await page.locator('[id="v1.1.0"]').innerText(), /2020-12[\s\S]*diff highlighter/);
+  check('Changelog lists v1.2.0, v1.1.0 and v1.0.0 newest first');
+  await page.screenshot({ path: new URL('desktop-changelog.png', output).pathname.replace(/^\/(\w:)/, '$1'), fullPage: true });
   for (const href of links) {
     const url = new URL(href, base);
     const response = await context.request.get(url.href);
@@ -213,6 +252,96 @@ try {
   await page.locator('.results-title').filter({ hasText: '4 changes' }).waitFor();
   await page.screenshot({ path: new URL('desktop-playground.png', output).pathname.replace(/^\/(\w:)/, '$1'), fullPage: true });
   check('Direct comparison route works');
+  const ai = await context.newPage();
+  ai.on('pageerror', e => errors.push(e.message));
+  ai.on('console', e => { if (e.type() === 'error' && !e.location().url.startsWith('https://api.anthropic.com/')) errors.push(e.text()); }); // mocked 401/429 are logged by Chrome
+  const anthropic = { mode: '401', calls: [] };
+  const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'POST' };
+  await ai.route('https://api.anthropic.com/**', async route => {
+    const req = route.request();
+    if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
+    anthropic.calls.push({ headers: req.headers(), body: JSON.parse(req.postData()) });
+    if (anthropic.mode === '401') return route.fulfill({ status: 401, headers: cors, json: { error: { message: 'invalid x-api-key' } } });
+    if (anthropic.mode === '429') return route.fulfill({ status: 429, headers: { ...cors, 'access-control-expose-headers': 'retry-after', 'retry-after': '12' }, json: { error: { message: 'rate_limited' } } });
+    await new Promise(r => setTimeout(r, 400));
+    return route.fulfill({ status: 200, headers: cors, json: { content: [{ type: 'text', text: 'Here you go:\n' + JSON.stringify({ summary: 'Four changes reject legacy payloads.', findings: [{ path: '/required/currency', why: 'Old producers omit currency.' }], adapter_schema: { type: 'object', properties: { currency: { default: 'USD' } } }, regression_test: "test('legacy payload', () => {});" }) }] } });
+  });
+  await ai.goto(base + '/playground.html');
+  await ai.locator('#run-check').click();
+  await ai.locator('.results-title').filter({ hasText: 'satisfies' }).waitFor();
+  assert.equal(await ai.locator('.explain-bar').count(), 0);
+  await ai.locator('#tab-compare').click();
+  await ai.locator('#run-check').click();
+  await ai.locator('.results-title').filter({ hasText: '4 changes' }).waitFor();
+  const explain = ai.getByRole('button', { name: 'Explain breaking changes with Claude (Beta)' });
+  await explain.click();
+  assert.equal(await ai.locator('#ai-settings').isVisible(), true);
+  await ai.locator('#ai-key').fill('not-a-key');
+  await ai.getByRole('button', { name: 'Save & explain' }).click();
+  assert.match(await ai.locator('#ai-settings .field-error').innerText(), /sk-ant-/);
+  check('Explainer asks for an sk-ant key and rejects malformed input');
+  await ai.getByRole('button', { name: 'Test with mock explainer' }).click();
+  await ai.locator('.brief h3').filter({ hasText: 'AI Migration Brief' }).waitFor();
+  assert.match(await ai.locator('.brief-source').innerText(), /Mock explainer/);
+  assert.equal(await ai.locator('.brief-code').count(), 2);
+  assert.match(await ai.locator('.brief').innerText(), /\/required\/currency[\s\S]*Suggested adapter schema[\s\S]*Regression test/);
+  assert.deepEqual(anthropic.calls, []);
+  assert.equal(await ai.evaluate(() => localStorage.length), 0);
+  check('Mock explainer renders a brief with adapter and regression test and makes no network call');
+  await ai.setViewportSize({ width: 320, height: 800 });
+  assert.equal(await ai.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+  await ai.screenshot({ path: new URL('mobile-explainer.png', output).pathname.replace(/^\/(\w:)/, '$1'), fullPage: true });
+  await ai.getByRole('button', { name: 'API settings' }).click();
+  assert.equal(await ai.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+  assert.equal(await ai.locator('#ai-settings').evaluate(d => d.getBoundingClientRect().right <= innerWidth), true);
+  await ai.getByRole('button', { name: 'Cancel' }).click();
+  await ai.setViewportSize({ width: 1440, height: 1000 });
+  check('Explainer brief and settings dialog fit a 320px viewport');
+  await ai.getByRole('button', { name: 'API settings' }).click();
+  await ai.locator('#ai-key').fill('sk-ant-test-0000000000');
+  await ai.getByRole('button', { name: 'Save & explain' }).click();
+  await ai.locator('.results-error[role=alert]').filter({ hasText: '401' }).waitFor();
+  assert.equal(anthropic.calls.length, 1);
+  const call = anthropic.calls[0];
+  assert.equal(call.headers['x-api-key'], 'sk-ant-test-0000000000');
+  assert.equal(call.headers['anthropic-dangerous-direct-browser-access'], 'true');
+  assert.equal(call.body.model, 'claude-sonnet-5-5');
+  const sent = JSON.parse(call.body.messages[0].content).breaking_findings;
+  assert.equal(sent.length, 4);
+  assert.deepEqual(Object.keys(sent[0]).sort(), ['kind', 'message', 'path']);
+  assert.doesNotMatch(JSON.stringify(call.body), /Sample Purchase|refunded|\$schema/);
+  check('Claude request carries only the four breaking findings, never the schemas');
+  anthropic.mode = '429';
+  await explain.click();
+  await ai.locator('.results-error[role=alert]').filter({ hasText: 'Rate limit reached (429). Retry in about 12 seconds.' }).waitFor();
+  check('Explainer reports invalid key and rate limit clearly');
+  anthropic.mode = '200';
+  await explain.click();
+  await ai.locator('.brief.is-loading').waitFor();
+  await ai.locator('.brief h3').filter({ hasText: 'AI Migration Brief' }).waitFor();
+  assert.match(await ai.locator('.brief-source').innerText(), /Claude · claude-sonnet-5-5/);
+  assert.match(await ai.locator('.brief').innerText(), /Old producers omit currency\./);
+  assert.equal(await ai.evaluate(() => localStorage.length), 0);
+  check('Claude response is parsed into a brief after a loading state; key is not persisted by default');
+  await ai.getByRole('button', { name: 'API settings' }).click();
+  await ai.locator('#ai-settings input[name=remember]').check();
+  await ai.getByRole('button', { name: 'Save & explain' }).click();
+  await ai.locator('.brief h3').filter({ hasText: 'AI Migration Brief' }).waitFor();
+  assert.equal(await ai.evaluate(() => localStorage.getItem('schemalabs.anthropic-key')), 'sk-ant-test-0000000000');
+  await ai.reload();
+  await ai.locator('#tab-compare').click();
+  await ai.locator('#run-check').click();
+  await ai.locator('.results-title').filter({ hasText: '4 changes' }).waitFor();
+  const callsBefore = anthropic.calls.length;
+  await ai.getByRole('button', { name: 'Explain breaking changes with Claude (Beta)' }).click();
+  await ai.locator('.brief h3').filter({ hasText: 'AI Migration Brief' }).waitFor();
+  assert.equal(anthropic.calls.length, callsBefore + 1);
+  assert.equal(await ai.locator('#ai-settings').isVisible(), false);
+  await ai.getByRole('button', { name: 'API settings' }).click();
+  await ai.getByRole('button', { name: 'Remove key' }).click();
+  assert.equal(await ai.evaluate(() => localStorage.length), 0);
+  check('Remembered key is reused after reload and can be removed');
+  await ai.close();
   const apiRequests = [];
   page.on('request', req => {
     if (['fetch', 'xhr'].includes(req.resourceType())) apiRequests.push(req.url());
