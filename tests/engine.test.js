@@ -427,5 +427,18 @@ test('CLI --format sarif emits a valid SARIF 2.1.0 log with every breaking findi
     assert.equal(lines['/properties/total/minimum'], 18);
     assert.equal(isSarif({ ...log, runs: [{ ...log.runs[0], results: [{ ...results[0], level: 'fatal' }] }] }), false, 'validator rejects an invalid level');
     assert.equal(spawnSync(process.execPath, [cli, '--baseline', base, '--candidate', next, '--format', 'xml'], { encoding: 'utf8' }).status, 2);
+
+    const out = join(dir, 'results.sarif');
+    const written = spawnSync(process.execPath, [cli, '--baseline', base, '--candidate', next, '--format', 'sarif', '-o', out], { encoding: 'utf8' });
+    assert.equal(written.status, 1);
+    assert.equal(written.stdout, '');
+    const bytes = await readFile(out);
+    assert.equal(bytes[0], 0x7b, 'UTF-8 without BOM');
+    assert.deepEqual(JSON.parse(bytes.toString('utf8')), log);
+    const text = join(dir, 'report.txt');
+    assert.equal(spawnSync(process.execPath, [cli, '--baseline', base, '--candidate', base, '--output', text]).status, 0);
+    assert.match(await readFile(text, 'utf8'), /^0 breaking, 0 review, 0 compatible\n$/);
+    assert.equal(spawnSync(process.execPath, [cli, '--baseline', base, '--candidate', next, '-o']).status, 2);
+    assert.equal(spawnSync(process.execPath, [cli, '--baseline', base, '--candidate', next, '-o', join(dir, 'missing-dir', 'x.sarif')]).status, 2);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

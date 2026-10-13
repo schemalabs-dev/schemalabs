@@ -167,9 +167,11 @@ try {
   await page.goto(base + '/docs.html#ci');
   assert.equal(await page.locator('.article-nav a[href="#ci"]').count(), 1);
   assert.equal(await page.locator('#ci h2').innerText(), 'Automating contract checks in CI');
-  assert.equal(await page.locator('#ci figcaption').innerText(), '.github/workflows/schema-check.yml');
-  const workflow = await page.locator('#ci pre code').innerText();
-  assert.match(workflow, /on:\s+pull_request:[\s\S]*actions\/checkout@v4[\s\S]*fetch-depth: 0[\s\S]*actions\/setup-node@v4[\s\S]*src\/engine\.js[\s\S]*process\.exit\(1\)/);
+  assert.deepEqual(await page.locator('#ci figcaption').allInnerTexts(), ['terminal', '.github/workflows/schema-check.yml']);
+  assert.match(await page.locator('#ci pre code').first().innerText(), /--format sarif -o results\.sarif/);
+  assert.match(await page.locator('#ci').innerText(), /--output[\s\S]*UTF-8[\s\S]*Exit code 1[\s\S]*0 means none[\s\S]*2 means a usage or input error/);
+  const workflow = await page.locator('#ci pre code').last().innerText();
+  assert.match(workflow, /on:\s+pull_request:[\s\S]*security-events: write[\s\S]*actions\/checkout@v4[\s\S]*fetch-depth: 0[\s\S]*actions\/setup-node@v4[\s\S]*bin\/schemalabs\.js[\s\S]*--format sarif -o results\.sarif[\s\S]*if: always\(\)[\s\S]*github\/codeql-action\/upload-sarif@v3[\s\S]*sarif_file: results\.sarif/);
   assert.match(workflow, /BASE_REF: \$\{\{ github\.base_ref \}\}/);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
   check('Docs show a CI workflow template and keep the page within the viewport');

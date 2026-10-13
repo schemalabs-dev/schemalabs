@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // Compare two JSON Schema files from the terminal. Exit 0: no breaking change, 1: breaking change found, 2: usage or input error.
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { compare } from '../src/engine.js';
 import { toSarif } from '../src/sarif.js';
 
-const usage = 'Usage: schemalabs --baseline <schema.json> --candidate <schema.json> [--format text|json|sarif] [--json]';
+const usage = 'Usage: schemalabs --baseline <schema.json> --candidate <schema.json> [--format text|json|sarif] [--json] [--output|-o <file>]';
 const fail = message => { console.error(`schemalabs: ${message}\n${usage}`); process.exit(2); };
 
 const args = process.argv.slice(2);
@@ -13,9 +13,9 @@ const options = { format: 'text' };
 for (let i = 0; i < args.length; i++) {
   const arg = args[i];
   if (arg === '--json') options.format = 'json';
-  else if (arg === '--baseline' || arg === '--candidate' || arg === '--format') {
-    if (!args[i + 1] || args[i + 1].startsWith('--')) fail(`${arg} needs a value`);
-    options[arg.slice(2)] = args[++i];
+  else if (['--baseline', '--candidate', '--format', '--output', '-o'].includes(arg)) {
+    if (!args[i + 1] || args[i + 1].startsWith('-')) fail(`${arg} needs a value`);
+    options[arg === '-o' ? 'output' : arg.slice(2)] = args[++i];
   } else fail(`unknown argument ${arg}`);
 }
 if (!options.baseline || !options.candidate) fail('both --baseline and --candidate are required');
@@ -32,12 +32,17 @@ const after = await load(options.candidate, 'candidate');
 let result;
 try { result = compare(before.schema, after.schema); } catch (error) { fail(`invalid schema: ${error.message}`); }
 
-if (options.format === 'json') console.log(JSON.stringify(result, null, 2));
+let output;
+if (options.format === 'json') output = JSON.stringify(result, null, 2);
 else if (options.format === 'sarif') {
   const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
-  console.log(JSON.stringify(toSarif(result, { candidateUri: options.candidate, candidateText: after.text, version }), null, 2));
+  output = JSON.stringify(toSarif(result, { candidateUri: options.candidate, candidateText: after.text, version }), null, 2);
 } else {
-  for (const change of result.changes) console.log(`${change.severity.toUpperCase().padEnd(10)} ${change.path}  ${change.message}`);
-  console.log(`${result.changes.length ? '\n' : ''}${result.breaking} breaking, ${result.review} review, ${result.compatible} compatible`);
+  const lines = result.changes.map(change => `${change.severity.toUpperCase().padEnd(10)} ${change.path}  ${change.message}`);
+  output = [...lines, `${lines.length ? '\n' : ''}${result.breaking} breaking, ${result.review} review, ${result.compatible} compatible`].join('\n');
 }
+// --output writes UTF-8 without a BOM; shell redirection in Windows PowerShell 5.1 would write UTF-16.
+if (options.output) {
+  try { await writeFile(options.output, output + '\n', 'utf8'); } catch (error) { fail(`cannot write ${options.output}: ${error.message}`); }
+} else console.log(output);
 process.exit(result.breaking ? 1 : 0);

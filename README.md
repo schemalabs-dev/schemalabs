@@ -28,8 +28,11 @@ Live Developer Preview: [https://schemalabs.co.uk](https://schemalabs.co.uk)
 ## Architecture & Project Structure
 
 ```text
+├── bin/
+│   └── schemalabs.js   # CLI runner (text, JSON and SARIF output)
 ├── src/
 │   ├── engine.js       # Core comparison & validation engine (Ajv 2020-12 & Draft-07)
+│   ├── sarif.js        # SARIF v2.1.0 export for GitHub code scanning
 │   └── samples.js      # Baseline and candidate test schemas
 ├── public/
 │   ├── assets/         # Bundled engine, workers, CSS ("the editor's proof" system)
@@ -38,8 +41,9 @@ Live Developer Preview: [https://schemalabs.co.uk](https://schemalabs.co.uk)
 │   ├── docs.html       # Dialect compatibility matrix and API specifications
 │   └── about.html      # Governance principles and company disclosures
 └── tests/
-    ├── engine.test.js  # Node.js test runner suite (84 unit tests, 100% coverage)
-    └── site.browser.mjs# Playwright E2E browser regression suite (54 verification points)
+    ├── engine.test.js  # Node.js test runner suite (86 unit tests, 100% line coverage of src/)
+    ├── fixtures/       # Official OASIS SARIF 2.1.0 JSON Schema used to validate exports
+    └── site.browser.mjs# Playwright E2E browser regression suite (81 verification points)
 ```
 
 ---
@@ -71,6 +75,28 @@ npm run test:coverage
 # Run local build
 npm run build
 ```
+
+### CLI Usage
+
+```bash
+# Human-readable report
+node bin/schemalabs.js --baseline s1.json --candidate s2.json
+
+# Raw JSON result for scripts
+node bin/schemalabs.js --baseline s1.json --candidate s2.json --format json
+
+# SARIF v2.1.0 for GitHub Code Scanning, written as UTF-8
+node bin/schemalabs.js --baseline s1.json --candidate s2.json --format sarif -o results.sarif
+```
+
+| Flag | Meaning |
+| --- | --- |
+| `--baseline <file>` | Schema before the change (required) |
+| `--candidate <file>` | Schema after the change (required) |
+| `--format text\|json\|sarif` | Output format, `text` by default (`--json` is a shorthand for `--format json`) |
+| `--output <file>`, `-o <file>` | Write the result to a UTF-8 file instead of standard output |
+
+Exit codes: `0` no breaking change, `1` at least one breaking change, `2` usage or input error. A GitHub Actions workflow that uploads the SARIF file with `github/codeql-action/upload-sarif@v3` is in the [documentation](https://schemalabs.co.uk/docs.html#ci).
 
 ---
 
