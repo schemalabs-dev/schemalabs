@@ -6,6 +6,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium } from '@playwright/test';
 import { validate, compare, baselineSchema, candidateSchema, samplePayload } from '../src/engine.js';
+import Ajv from 'ajv';
+import addFormats from 'ajv-formats';
 
 const object = (properties = {}, extra = {}) => ({ type: 'object', properties, ...extra });
 const check = (before, after, severity, kind) => {
@@ -388,5 +390,42 @@ test('CLI exits 1 on breaking changes, 0 when compatible, 2 on bad input', async
     assert.equal(cli('--baseline', base).status, 2);
     assert.equal(cli('--baseline', base, '--candidate', bad).status, 2);
     assert.match(cli('--baseline', base, '--candidate', join(dir, 'missing.json')).stderr, /cannot read candidate schema/);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('CLI --format sarif emits a valid SARIF 2.1.0 log with every breaking finding', async () => {
+  // Official OASIS schema (draft-04); Ajv compiles it as draft-07 since it uses no draft-04-only keywords.
+  const { $schema, id, ...sarifSchema } = JSON.parse(await readFile(new URL('./fixtures/sarif-schema-2.1.0.json', import.meta.url), 'utf8'));
+  const ajv = new Ajv({ strict: false, allErrors: true });
+  addFormats(ajv);
+  const isSarif = ajv.compile(sarifSchema);
+  const dir = await mkdtemp(join(tmpdir(), 'schemalabs-sarif-'));
+  try {
+    const base = join(dir, 'base.json'), next = join(dir, 'next.json');
+    await writeFile(base, JSON.stringify(baselineSchema, null, 2));
+    await writeFile(next, JSON.stringify(candidateSchema, null, 2));
+    const cli = new URL('../bin/schemalabs.js', import.meta.url).pathname.replace(/^\/(\w:)/, '$1');
+    const run = spawnSync(process.execPath, [cli, '--baseline', base, '--candidate', next, '--format', 'sarif'], { encoding: 'utf8' });
+    assert.equal(run.status, 1);
+    const log = JSON.parse(run.stdout);
+    assert.equal(isSarif(log), true, JSON.stringify(isSarif.errors));
+    assert.equal(log.version, '2.1.0');
+    const [{ tool, results }] = log.runs;
+    assert.equal(tool.driver.name, 'schemalabs');
+    assert.deepEqual(tool.driver.rules.map(rule => [rule.id, rule.defaultConfiguration.level]), [['breaking', 'error'], ['review', 'warning'], ['compatible', 'note']]);
+    const expected = compare(baselineSchema, candidateSchema).changes.filter(change => change.severity === 'breaking');
+    assert.equal(expected.length, 4);
+    assert.deepEqual(results.map(r => r.locations[0].logicalLocations[0].fullyQualifiedName), expected.map(change => change.path));
+    for (const r of results) {
+      assert.equal(r.ruleId, 'breaking');
+      assert.equal(r.level, 'error');
+      assert.equal(tool.driver.rules[r.ruleIndex].id, r.ruleId);
+      assert.equal(r.locations[0].physicalLocation.artifactLocation.uri, next.replace(/\\/g, '/'));
+    }
+    const lines = Object.fromEntries(results.map(r => [r.locations[0].logicalLocations[0].fullyQualifiedName, r.locations[0].physicalLocation.region.startLine]));
+    assert.equal(lines['/required/currency'], 31);
+    assert.equal(lines['/properties/total/minimum'], 18);
+    assert.equal(isSarif({ ...log, runs: [{ ...log.runs[0], results: [{ ...results[0], level: 'fatal' }] }] }), false, 'validator rejects an invalid level');
+    assert.equal(spawnSync(process.execPath, [cli, '--baseline', base, '--candidate', next, '--format', 'xml'], { encoding: 'utf8' }).status, 2);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
